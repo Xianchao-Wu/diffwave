@@ -189,6 +189,8 @@ class DiffWave(nn.Module):
     '''Conv1d(64, 1, kernel_size=(1,), stride=(1,))'''
     nn.init.zeros_(self.output_projection.weight)
 
+
+
   def forward(self, audio, diffusion_step, spectrogram=None): # audio=[4, 15872], t=[9, 30, 44, 25], spectrogram=[4, 80, 62]
     assert (spectrogram is None and self.spectrogram_upsampler is None) or \
            (spectrogram is not None and self.spectrogram_upsampler is not None)

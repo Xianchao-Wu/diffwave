@@ -207,6 +207,8 @@ def train(args, params):
   else: # NOTE in here:
     dataset = from_path(args.data_dirs, params) # <torch.utils.data.dataloader.DataLoader object at 0x7f32b028feb0>
   model = DiffWave(params).cuda()
+  params = [param.nelement() for param in model.parameters() if param.requires_grad]; print('model size=', sum(params))
+
   '''
   ipdb> p model
 DiffWave(

@@ -29,7 +29,7 @@ from params import params
 
 
 def transform(filename):
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     if T.__version__ > '0.7.0':
         audio, sr = T.load(filename)
         audio = torch.clamp(audio[0], -1.0, 1.0)
@@ -61,7 +61,7 @@ def transform(filename):
 
 
 def main(args):
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     filenames = glob(f'{args.dir}/**/*.wav', recursive=True)
 
     # TODO 下面的这个是多线程，现在先不用管
@@ -73,7 +73,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     parser = ArgumentParser(description='prepares a dataset to train DiffWave')
     parser.add_argument('dir',
         help='directory containing .wav files for training')

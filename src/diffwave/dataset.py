@@ -26,7 +26,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 class ConditionalDataset(torch.utils.data.Dataset):
   def __init__(self, paths):
-    import ipdb; ipdb.set_trace()
+    ##import ipdb; ipdb.set_trace()
 
     super().__init__()
     self.filenames = []
@@ -34,11 +34,11 @@ class ConditionalDataset(torch.utils.data.Dataset):
       self.filenames += glob(f'{path}/**/*.wav', recursive=True) # 这是获取所有的wav文件，嗯？梅尔谱文件被直接无视了吗... NOTE TODO
 
   def __len__(self):
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     return len(self.filenames) # =4
 
   def __getitem__(self, idx):
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     audio_filename = self.filenames[idx]
     spec_filename = f'{audio_filename}.spec.npy'
     signal, _ = torchaudio.load(audio_filename) # NOTE 哦，明白了，这是根据wav文件名，去找的 wav.spec.npy这个保存了梅尔谱的文件名了, shape = torch.Size([1, 42736])
@@ -51,7 +51,7 @@ class ConditionalDataset(torch.utils.data.Dataset):
 
 class UnconditionalDataset(torch.utils.data.Dataset):
   def __init__(self, paths):
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
 
     super().__init__()
     self.filenames = []
@@ -79,7 +79,7 @@ class Collator:
     '''
 
   def collate(self, minibatch): # minibatch = a list of dicts, each element is a dict, {'audio': tensor, 'spectrogram': array}, collate = 检查校对 的意思
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     samples_per_frame = self.params.hop_samples # 256 NOTE
     for record in minibatch:
       if self.params.unconditional:
@@ -108,7 +108,7 @@ class Collator:
           end *= samples_per_frame # =138*256=35328
           record['audio'] = record['audio'][start:end] # torch.Size([15872]), 这是截取了一部分的原始wave form里面的数据
           record['audio'] = np.pad(record['audio'], (0, (end-start) - len(record['audio'])), mode='constant') # 这里什么都没有做
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     audio = np.stack([record['audio'] for record in minibatch if 'audio' in record])
     if self.params.unconditional:
         return {
@@ -117,8 +117,8 @@ class Collator:
         }
     spectrogram = np.stack([record['spectrogram'] for record in minibatch if 'spectrogram' in record])
     return {
-        'audio': torch.from_numpy(audio),
-        'spectrogram': torch.from_numpy(spectrogram),
+        'audio': torch.from_numpy(audio), # [4, 15872]
+        'spectrogram': torch.from_numpy(spectrogram), # (4, 80, 62)
     }
 
   # for gtzan
@@ -148,7 +148,7 @@ class Collator:
 
 
 def from_path(data_dirs, params, is_distributed=False):
-  import ipdb; ipdb.set_trace()
+  #import ipdb; ipdb.set_trace()
 
   if params.unconditional:
     dataset = UnconditionalDataset(data_dirs)

@@ -143,20 +143,20 @@ class DiffWaveLearner:
 
     with self.autocast:
       t = torch.randint(0, len(self.params.noise_schedule), [N], device=audio.device)
-      noise_scale = self.noise_level[t].unsqueeze(1)
-      noise_scale_sqrt = noise_scale**0.5
-      noise = torch.randn_like(audio)
-      noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale)**0.5 * noise
+      noise_scale = self.noise_level[t].unsqueeze(1) # [4,1], 这是从alpha_t_bar中，按照t，取了四个值出来，是为alpha_t_bar
+      noise_scale_sqrt = noise_scale**0.5 # sqrt_alpha_t_bar
+      noise = torch.randn_like(audio) # epsilon, [4, 15872]
+      noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale)**0.5 * noise # 这是一步炸楼，从x_0直接到x_t了。[4, 15872]
 
-      predicted = self.model(noisy_audio, t, spectrogram)
-      loss = self.loss_fn(noise, predicted.squeeze(1))
+      predicted = self.model(noisy_audio, t, spectrogram) # x_t=[4, 15872], t=[4], condition=[4, 80, 62], 这仨输入有意思 NOTE, predicted.shape=[4, 1, 15872]
+      loss = self.loss_fn(noise, predicted.squeeze(1)) # [4, 15872]=noise, and predicted_noise=[4, 15872]; L1Loss()=loss, tensor(0.7991, device='cuda:0', grad_fn=<L1LossBackward0>)=loss
 
     self.scaler.scale(loss).backward()
     self.scaler.unscale_(self.optimizer)
-    self.grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.params.max_grad_norm or 1e9)
+    self.grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.params.max_grad_norm or 1e9) # tensor(0.2511, device='cuda:0')
     self.scaler.step(self.optimizer)
     self.scaler.update()
-    return loss
+    return loss # tensor(0.7991, device='cuda:0', grad_fn=<L1LossBackward0>) NOTE
 
   def _write_summary(self, step, features, loss):
     writer = self.summary_writer or SummaryWriter(self.model_dir, purge_step=step)

@@ -43,17 +43,17 @@ class DiffusionEmbedding(nn.Module):
     self.projection1 = Linear(128, 512) # Linear(in_features=128, out_features=512, bias=True)
     self.projection2 = Linear(512, 512) # Linear(in_features=512, out_features=512, bias=True)
 
-  def forward(self, diffusion_step):
-    import ipdb; ipdb.set_trace()
-    if diffusion_step.dtype in [torch.int32, torch.int64]:
-      x = self.embedding[diffusion_step]
+  def forward(self, diffusion_step): # timesteps, tensor([ 9, 30, 44, 25], device='cuda:0') of one batch
+    #import ipdb; ipdb.set_trace()
+    if diffusion_step.dtype in [torch.int32, torch.int64]: # NOTE, in here:
+      x = self.embedding[diffusion_step] # torch.Size([50, 128]), 这是事先设定好的一个可训练的table, [50, 128], now, x.shape=[4] to [4, 128]
     else:
       x = self._lerp_embedding(diffusion_step)
-    x = self.projection1(x)
+    x = self.projection1(x) # Linear(in_features=128, out_features=512, bias=True), [4, 128] to [4, 512]
     x = silu(x)
-    x = self.projection2(x)
+    x = self.projection2(x) # Linear(in_features=512, out_features=512, bias=True), [4, 512] to [4, 512]
     x = silu(x)
-    return x
+    return x # [4, 512], NOTE 这个关于时间的embedding，没有问题了
 
   def _lerp_embedding(self, t):
     low_idx = torch.floor(t).long()
@@ -82,15 +82,15 @@ class SpectrogramUpsampler(nn.Module):
     ConvTranspose2d(1, 1, kernel_size=(3, 32), stride=(1, 16), padding=(1, 8))
     '''
 
-  def forward(self, x):
+  def forward(self, x): # torch.Size([4, 80, 62])
     import ipdb; ipdb.set_trace()
-    x = torch.unsqueeze(x, 1)
-    x = self.conv1(x)
+    x = torch.unsqueeze(x, 1) # torch.Size([4, 1, 80, 62])
+    x = self.conv1(x) # ConvTranspose2d(1, 1, kernel_size=(3, 32), stride=(1, 16), padding=(1, 8)) -> torch.Size([4, 1, 80, 992])
+    x = F.leaky_relu(x, 0.4) # 
+    x = self.conv2(x) # ConvTranspose2d(1, 1, kernel_size=(3, 32), stride=(1, 16), padding=(1, 8)), -> torch.Size([4, 1, 80, 15872]) 这是对梅尔谱进行上采样，从而让其shape，和原始的wave form的shape相同 NOTE, 这个太重要了!!!
     x = F.leaky_relu(x, 0.4)
-    x = self.conv2(x)
-    x = F.leaky_relu(x, 0.4)
-    x = torch.squeeze(x, 1)
-    return x
+    x = torch.squeeze(x, 1) # torch.Size([4, 80, 15872])
+    return x # torch.Size([4, 80, 15872]) 这是把梅尔谱的shape，上采样成 original wave form的shape。然后就可以开始一系列操作了
 
 
 class ResidualBlock(nn.Module):
@@ -119,26 +119,30 @@ class ResidualBlock(nn.Module):
     self.output_projection = Conv1d(residual_channels, 2 * residual_channels, 1)
     '''Conv1d(64, 128, kernel_size=(1,), stride=(1,))'''
 
-  def forward(self, x, diffusion_step, conditioner=None):
-    import ipdb; ipdb.set_trace()
+  def forward(self, x, diffusion_step, conditioner=None): # (torch.Size([4, 64, 15872]), torch.Size([4, 512]), torch.Size([4, 80, 15872]))
+    #import ipdb; ipdb.set_trace()
 
     assert (conditioner is None and self.conditioner_projection is None) or \
            (conditioner is not None and self.conditioner_projection is not None)
 
-    diffusion_step = self.diffusion_projection(diffusion_step).unsqueeze(-1)
-    y = x + diffusion_step
+    diffusion_step = self.diffusion_projection(diffusion_step).unsqueeze(-1) # time, [4, 512] to torch.Size([4, 64, 1])
+    # Linear(in_features=512, out_features=64, bias=True);  
+
+    y = x + diffusion_step # x=torch.Size([4, 64, 15872]), torch.Size([4, 64, 1]); TODO for what? x_t 和t 相加？？？y.shape = torch.Size([4, 64, 15872])
     if self.conditioner_projection is None: # using a unconditional model
       y = self.dilated_conv(y)
     else:
-      conditioner = self.conditioner_projection(conditioner)
+      conditioner = self.conditioner_projection(conditioner) # Conv1d(80, 128, kernel_size=(1,), stride=(1,)), torch.Size([4, 80, 15872]) -> torch.Size([4, 128, 15872]), 这是关于梅尔谱条件的input, condition
       y = self.dilated_conv(y) + conditioner
+      # Conv1d(64, 128, kernel_size=(3,), stride=(1,), padding=(1,)), from [4, 64, 15872] to [4, 128, 15872], 
+      # NOTE，这是直接相加。。。 y.shape = torch.Size([4, 128, 15872])
 
-    gate, filter = torch.chunk(y, 2, dim=1)
-    y = torch.sigmoid(gate) * torch.tanh(filter)
+    gate, filter = torch.chunk(y, 2, dim=1) # 按照维度dim=1，把y切成两个chunks，gate.shape=[4, 64, 15872]; filter=[4, 64, 15872] NOTE
+    y = torch.sigmoid(gate) * torch.tanh(filter) # NOTE 有意思，左边的一半是给了sigmoid，右边的一半是给了filter TODO torch.Size([4, 64, 15872])=y.shape
 
-    y = self.output_projection(y)
-    residual, skip = torch.chunk(y, 2, dim=1)
-    return (x + residual) / sqrt(2.0), skip
+    y = self.output_projection(y) # Conv1d(64, 128, kernel_size=(1,), stride=(1,)); y=[4, 64, 15872] to torch.Size([4, 128, 15872])
+    residual, skip = torch.chunk(y, 2, dim=1) # residual.shape=[4, 64, 15872], skip.shape=[4, 64, 15872]
+    return (x + residual) / sqrt(2.0), skip # 左边[4, 64, 15872]; 右边[4, 64, 15872]
 
 
 class DiffWave(nn.Module):
@@ -185,24 +189,43 @@ class DiffWave(nn.Module):
     '''Conv1d(64, 1, kernel_size=(1,), stride=(1,))'''
     nn.init.zeros_(self.output_projection.weight)
 
-  def forward(self, audio, diffusion_step, spectrogram=None):
+  def forward(self, audio, diffusion_step, spectrogram=None): # audio=[4, 15872], t=[9, 30, 44, 25], spectrogram=[4, 80, 62]
     assert (spectrogram is None and self.spectrogram_upsampler is None) or \
            (spectrogram is not None and self.spectrogram_upsampler is not None)
-    x = audio.unsqueeze(1)
-    x = self.input_projection(x)
+    x = audio.unsqueeze(1) # [4, 1, 15872], 大概是1秒，因为1秒是16000个数据点 NOTE
+    x = self.input_projection(x) # Conv1d(1, 64, kernel_size=(1,), stride=(1,)), [4, 1, 15872] -> [4, 64, 15872]
     x = F.relu(x)
-
-    diffusion_step = self.diffusion_embedding(diffusion_step)
-    if self.spectrogram_upsampler: # use conditional model
-      spectrogram = self.spectrogram_upsampler(spectrogram)
-
+    import ipdb; ipdb.set_trace()
+    diffusion_step = self.diffusion_embedding(diffusion_step) # from [4] to [4, 512], shape
+    if self.spectrogram_upsampler: # use conditional model, NOTE in here
+      spectrogram = self.spectrogram_upsampler(spectrogram) # from [4, 80, 62] to [4, 80, 15872] 
+    import ipdb; ipdb.set_trace()
     skip = None
+    idx = 0
     for layer in self.residual_layers:
-      x, skip_connection = layer(x, diffusion_step, spectrogram)
-      skip = skip_connection if skip is None else skip_connection + skip
+      print('---- {}-th layer ----'.format(idx))
+      '''
+      ResidualBlock(
+          (dilated_conv): Conv1d(64, 128, kernel_size=(3,), stride=(1,), padding=(1,))
+          (diffusion_projection): Linear(in_features=512, out_features=64, bias=True)
+          (conditioner_projection): Conv1d(80, 128, kernel_size=(1,), stride=(1,))
+          (output_projection): Conv1d(64, 128, kernel_size=(1,), stride=(1,))
+        )
+        '''
+      print('{}-th layer, in: x={}, t={}, mel={}'.format(idx, x.shape, diffusion_step.shape, spectrogram.shape))
+      x, skip_connection = layer(x, diffusion_step, spectrogram) # input: (torch.Size([4, 64, 15872]), torch.Size([4, 512]), torch.Size([4, 80, 15872])); x_t, t, condition; output, x.shape=[4, 64, 15872], skip_connection=[4, 64, 15872] 
+      print('{}-th layer, out: x={}, skip_connection={}'.format(idx, x.shape, skip_connection.shape))
+      skip = skip_connection if skip is None else skip_connection + skip # NOTE 这个有意思了
+      idx += 1
 
-    x = skip / sqrt(len(self.residual_layers))
-    x = self.skip_projection(x)
+    import ipdb; ipdb.set_trace()
+    x = skip / sqrt(len(self.residual_layers)) # / sqrt(30), 是一个重要的分母...
+    x = self.skip_projection(x) # Conv1d(64, 64, kernel_size=(1,), stride=(1,))
     x = F.relu(x)
-    x = self.output_projection(x)
+    x = self.output_projection(x) # Conv1d(64, 1, kernel_size=(1,), stride=(1,))
     return x
+
+    # 0-th, layer, x_t=[4, 64, 15872], t=[4, 512], mel=[4, 80, 15872]
+    #              output: x=[4, 64, 15872], skip=[4, 64, 15872]
+
+

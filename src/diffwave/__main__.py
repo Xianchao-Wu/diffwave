@@ -17,8 +17,10 @@ from argparse import ArgumentParser
 from torch.cuda import device_count
 from torch.multiprocessing import spawn
 
-from diffwave.learner import train, train_distributed
-from diffwave.params import params
+#from diffwave.learner import train, train_distributed
+from learner import train, train_distributed
+#from diffwave.params import params
+from params import params
 
 
 def _get_free_port():
@@ -28,8 +30,10 @@ def _get_free_port():
 
 
 def main(args):
+  import ipdb; ipdb.set_trace()
   replica_count = device_count()
-  if replica_count > 1:
+  debug=True
+  if replica_count > 1 and not debug:
     if params.batch_size % replica_count != 0:
       raise ValueError(f'Batch size {params.batch_size} is not evenly divisble by # GPUs {replica_count}.')
     params.batch_size = params.batch_size // replica_count

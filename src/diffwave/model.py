@@ -27,7 +27,7 @@ ConvTranspose2d = nn.ConvTranspose2d
 
 def Conv1d(*args, **kwargs):
   layer = nn.Conv1d(*args, **kwargs)
-  nn.init.kaiming_normal_(layer.weight)
+  nn.init.kaiming_normal_(layer.weight) # 这个是用kaiming方法来初始化网络
   return layer
 
 
@@ -37,7 +37,7 @@ def silu(x):
 
 
 class DiffusionEmbedding(nn.Module):
-  def __init__(self, max_steps): # max_steps=50
+  def __init__(self, max_steps): # max_steps=50, 这是对时间的embedding
     super().__init__()
     self.register_buffer('embedding', 
             self._build_embedding(max_steps), persistent=False) 
@@ -60,10 +60,12 @@ class DiffusionEmbedding(nn.Module):
       x = self._lerp_embedding(diffusion_step)
     x = self.projection1(x) 
     # Linear(in_features=128, out_features=512, bias=True), [4, 128] to [4, 512]
+    # 第一个线性变换网络
 
     x = silu(x)
     x = self.projection2(x) 
     # Linear(in_features=512, out_features=512, bias=True), [4, 512] to [4, 512]
+    # 第二个线性变换网络
 
     x = silu(x)
     return x # [4, 512], NOTE 这个关于时间的embedding，没有问题了
@@ -91,12 +93,14 @@ class DiffusionEmbedding(nn.Module):
 
 
 class SpectrogramUpsampler(nn.Module):
+  # 梅尔谱的上采样 NOTE
   def __init__(self, n_mels):
     super().__init__()
     self.conv1 = ConvTranspose2d(1, 1, [3, 32], stride=[1, 16], padding=[1, 8]) 
     '''
     ConvTranspose2d(1, 1, kernel_size=(3, 32), stride=(1, 16), padding=(1, 8))
     '''
+
     self.conv2 = ConvTranspose2d(1, 1,  [3, 32], stride=[1, 16], padding=[1, 8])
     '''
     ConvTranspose2d(1, 1, kernel_size=(3, 32), stride=(1, 16), padding=(1, 8))
@@ -164,6 +168,7 @@ class ResidualBlock(nn.Module):
     y = x + diffusion_step 
     # x=torch.Size([4, 64, 15872]), torch.Size([4, 64, 1]); 
     # TODO for what? x_t 和t 相加？？？y.shape = torch.Size([4, 64, 15872])
+    # x_t和time的直接相加 NOTE 这个有意思！
 
     if self.conditioner_projection is None: # using a unconditional model
       y = self.dilated_conv(y)
@@ -176,7 +181,8 @@ class ResidualBlock(nn.Module):
       y = self.dilated_conv(y) + conditioner
       # Conv1d(64, 128, kernel_size=(3,), stride=(1,), padding=(1,)), 
       # from [4, 64, 15872] to [4, 128, 15872], 
-      # NOTE，这是直接相加。。。 y.shape = torch.Size([4, 128, 15872])
+      # NOTE，这是直接相加。。。 (x_t和t的相加) + (梅尔谱条件张量) 
+      # y.shape = torch.Size([4, 128, 15872])
 
     gate, filter = torch.chunk(y, 2, dim=1) 
     # 按照维度dim=1，把y切成两个chunks，
@@ -242,10 +248,11 @@ class DiffWave(nn.Module):
 
     self.skip_projection = Conv1d(params.residual_channels, 
             params.residual_channels, 1)
-
     '''Conv1d(64, 64, kernel_size=(1,), stride=(1,))'''
+
     self.output_projection = Conv1d(params.residual_channels, 1, 1)
     '''Conv1d(64, 1, kernel_size=(1,), stride=(1,))'''
+
     nn.init.zeros_(self.output_projection.weight)
 
 

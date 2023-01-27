@@ -121,7 +121,7 @@ class SpectrogramUpsampler(nn.Module):
     return x 
     # torch.Size([4, 80, 15872]) 这是把梅尔谱的shape，
     # 上采样成 original wave form的shape。然后就可以开始一系列操作了
-
+    # NOTE from [1, 80, 82] to [1, 80, 20992] in inference
 
 class ResidualBlock(nn.Module):
   def __init__(self, n_mels, residual_channels, dilation, uncond=False):
@@ -252,6 +252,7 @@ class DiffWave(nn.Module):
 
   def forward(self, audio, diffusion_step, spectrogram=None): 
     # audio=[4, 15872], t=[9, 30, 44, 25], spectrogram=[4, 80, 62]
+    # [inference], audio=[1, 20992], diffusion_step=tensor([0.], device='cuda:0'), spectrogram=torch.Size([1, 80, 82]) NOTE
     assert (spectrogram is None and self.spectrogram_upsampler is None) or \
            (spectrogram is not None and self.spectrogram_upsampler is not None)
 
@@ -259,11 +260,11 @@ class DiffWave(nn.Module):
 
     x = self.input_projection(x) 
     # Conv1d(1, 64, kernel_size=(1,), stride=(1,)), [4, 1, 15872] -> [4, 64, 15872]
-
+    # [inference], [1, 1, 20992] -> [1, 64, 20992] NOTE
     x = F.relu(x)
     import ipdb; ipdb.set_trace()
     diffusion_step = self.diffusion_embedding(diffusion_step) 
-    # from [4] to [4, 512], shape
+    # from [4] to [4, 512], shape, 这是对时间time的编码，从一个标量，到一个512维度的向量 NOTE
 
     if self.spectrogram_upsampler: # use conditional model, NOTE in here
       spectrogram = self.spectrogram_upsampler(spectrogram) 
@@ -304,7 +305,7 @@ class DiffWave(nn.Module):
     x = self.skip_projection(x) # Conv1d(64, 64, kernel_size=(1,), stride=(1,))
     x = F.relu(x)
     x = self.output_projection(x) # Conv1d(64, 1, kernel_size=(1,), stride=(1,))
-    return x
+    return x # e.g., [1, 64, 20992] -> output_projection -> torch.Size([1, 1, 20992]) -> in inference NOTE
 
     # 0-th, layer, x_t=[4, 64, 15872], t=[4, 512], mel=[4, 80, 15872]
     #              output: x=[4, 64, 15872], skip=[4, 64, 15872]

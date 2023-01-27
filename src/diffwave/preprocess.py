@@ -54,10 +54,15 @@ def transform(filename):
     mel_spec_transform = TT.MelSpectrogram(**mel_args)
 
     with torch.no_grad():
-        spectrogram = mel_spec_transform(audio) # e.g., from torch.Size([36368]) to torch.Size([80, 143])
+        spectrogram = mel_spec_transform(audio) 
+        # e.g., from torch.Size([36368]) to torch.Size([80, 143])
+
         spectrogram = 20 * torch.log10(torch.clamp(spectrogram, min=1e-5)) - 20
         spectrogram = torch.clamp((spectrogram + 100) / 100, 0.0, 1.0)
-        np.save(f'{filename}.spec.npy', spectrogram.cpu().numpy()) # NOTE 有意思，这是保存梅尔谱的内容到一个具体的文件, /workspace/asr/diffusion_models/diffwave/data/A01M0097.wav_00442.278_00444.551.wav.spec.npy
+        np.save(f'{filename}.spec.npy', spectrogram.cpu().numpy()) 
+        # NOTE 有意思，这是保存梅尔谱的内容到一个具体的文件, 
+        #/workspace/asr/diffusion_models/diffwave/data/
+        #    A01M0097.wav_00442.278_00444.551.wav.spec.npy
 
 
 def main(args):
@@ -66,7 +71,8 @@ def main(args):
 
     # TODO 下面的这个是多线程，现在先不用管
     #with ProcessPoolExecutor() as executor:
-    #    list(tqdm(executor.map(transform, filenames), desc='Preprocessing', total=len(filenames)))
+    #    list(tqdm(executor.map(transform, filenames), 
+    #        desc='Preprocessing', total=len(filenames)))
 
     for filename in filenames:
         transform(filename)
@@ -91,3 +97,4 @@ if __name__ == '__main__':
     -rw-r--r-- 1 root root 38028 Jan 18 10:41 A01M0097.wav_00447.951_00449.138.wav
     -rw-r--r-- 1 root root 24128 Jan 18 11:00 A01M0097.wav_00447.951_00449.138.wav.spec.npy
     '''
+

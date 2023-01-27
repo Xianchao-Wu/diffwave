@@ -6,4 +6,5 @@
 #########################################################################
 #!/bin/bash
 
-python -m ipdb preprocess.py /workspace/asr/diffusion_models/diffwave/data
+#python -m ipdb preprocess.py /workspace/asr/diffusion_models/diffwave/data
+python preprocess.py /workspace/asr/diffusion_models/diffwave/data

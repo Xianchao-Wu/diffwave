@@ -50,7 +50,9 @@ params = AttrDict(
     residual_channels=64,
     dilation_cycle_length=10,
     unconditional = False,
-    noise_schedule=np.linspace(1e-4, 0.05, 50).tolist(), # NOTE 这个不错，直接就给出了betas的取值了，线性的
+    noise_schedule=np.linspace(1e-4, 0.05, 50).tolist(), 
+    # NOTE 这个不错，直接就给出了betas的取值了，线性的
+
     inference_noise_schedule=[0.0001, 0.001, 0.01, 0.05, 0.2, 0.5],
 
     # unconditional sample len

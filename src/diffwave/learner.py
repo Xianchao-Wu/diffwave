@@ -58,8 +58,12 @@ class DiffWaveLearner:
     self.dataset = dataset
     self.optimizer = optimizer
     self.params = params
-    self.autocast = torch.cuda.amp.autocast(enabled=kwargs.get('fp16', False)) # <torch.cuda.amp.autocast_mode.autocast object at 0x7fe8dcd0df10>
-    self.scaler = torch.cuda.amp.GradScaler(enabled=kwargs.get('fp16', False)) # <torch.cuda.amp.grad_scaler.GradScaler object at 0x7fe8d51dc130>
+    self.autocast = torch.cuda.amp.autocast(enabled=kwargs.get('fp16', False)) 
+    # <torch.cuda.amp.autocast_mode.autocast object at 0x7fe8dcd0df10>
+
+    self.scaler = torch.cuda.amp.GradScaler(enabled=kwargs.get('fp16', False)) 
+    # <torch.cuda.amp.grad_scaler.GradScaler object at 0x7fe8d51dc130>
+
     self.step = 0
     self.is_master = True
 
@@ -76,8 +80,10 @@ class DiffWaveLearner:
       model_state = self.model.state_dict()
     return {
         'step': self.step,
-        'model': { k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in model_state.items() },
-        'optimizer': { k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in self.optimizer.state_dict().items() },
+        'model': { k: v.cpu() if isinstance(v, torch.Tensor) \
+                else v for k, v in model_state.items() },
+        'optimizer': { k: v.cpu() if isinstance(v, torch.Tensor) \
+                else v for k, v in self.optimizer.state_dict().items() },
         'params': dict(self.params),
         'scaler': self.scaler.state_dict(),
     }
@@ -114,10 +120,15 @@ class DiffWaveLearner:
   def train(self, max_steps=None):
     device = next(self.model.parameters()).device # device(type='cuda', index=0)
     while True:
-      for features in tqdm(self.dataset, desc=f'Epoch {self.step // len(self.dataset)}') if self.is_master else self.dataset:
+      for features in tqdm(self.dataset,  
+        desc=f'Epoch {self.step // len(self.dataset)}') \
+        if self.is_master else self.dataset:
+
         if max_steps is not None and self.step >= max_steps:
           return
-        features = _nested_map(features, lambda x: x.to(device) if isinstance(x, torch.Tensor) else x)
+        features = _nested_map(features, 
+                lambda x: x.to(device) if isinstance(x, torch.Tensor) else x)
+
         loss = self.train_step(features)
         if torch.isnan(loss).any():
           raise RuntimeError(f'Detected NaN loss at step {self.step}.')
@@ -139,30 +150,49 @@ class DiffWaveLearner:
     import ipdb; ipdb.set_trace()
     N, T = audio.shape # N=4=batch size, T=15872=length of timepoints in wave form
     device = audio.device # device(type='cuda', index=0)
-    self.noise_level = self.noise_level.to(device) # alpha_t_bar, 是1-beta的累计的乘积
+
+    self.noise_level = self.noise_level.to(device) 
+    # alpha_t_bar, 是1-beta的累计的乘积
 
     with self.autocast:
-      t = torch.randint(0, len(self.params.noise_schedule), [N], device=audio.device)
-      noise_scale = self.noise_level[t].unsqueeze(1) # [4,1], 这是从alpha_t_bar中，按照t，取了四个值出来，是为alpha_t_bar
+      t = torch.randint(0, 
+              len(self.params.noise_schedule), [N], device=audio.device)
+
+      noise_scale = self.noise_level[t].unsqueeze(1) 
+      # [4,1], 这是从alpha_t_bar中，按照t，取了四个值出来，是为alpha_t_bar
+
       noise_scale_sqrt = noise_scale**0.5 # sqrt_alpha_t_bar
       noise = torch.randn_like(audio) # epsilon, [4, 15872]
-      noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale)**0.5 * noise # 这是一步炸楼，从x_0直接到x_t了。[4, 15872]
+      noisy_audio = noise_scale_sqrt * audio + (1.0 - noise_scale)**0.5 * noise 
+      # 这是一步炸楼，从x_0直接到x_t了。[4, 15872]
 
-      predicted = self.model(noisy_audio, t, spectrogram) # x_t=[4, 15872], t=[4], condition=[4, 80, 62], 这仨输入有意思 NOTE, predicted.shape=[4, 1, 15872]
-      loss = self.loss_fn(noise, predicted.squeeze(1)) # [4, 15872]=noise, and predicted_noise=[4, 15872]; L1Loss()=loss, tensor(0.7991, device='cuda:0', grad_fn=<L1LossBackward0>)=loss
+      predicted = self.model(noisy_audio, t, spectrogram) 
+      # x_t=[4, 15872], t=[4], condition=[4, 80, 62], 
+      # 这仨输入有意思 NOTE, predicted.shape=[4, 1, 15872]
+
+      loss = self.loss_fn(noise, predicted.squeeze(1)) 
+      # [4, 15872]=noise, and predicted_noise=[4, 15872]; 
+      # L1Loss()=loss, 
+      # tensor(0.7991, device='cuda:0', grad_fn=<L1LossBackward0>)=loss
 
     self.scaler.scale(loss).backward()
     self.scaler.unscale_(self.optimizer)
-    self.grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.params.max_grad_norm or 1e9) # tensor(0.2511, device='cuda:0')
+    self.grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), 
+            self.params.max_grad_norm or 1e9) # tensor(0.2511, device='cuda:0')
+
     self.scaler.step(self.optimizer)
     self.scaler.update()
     return loss # tensor(0.7991, device='cuda:0', grad_fn=<L1LossBackward0>) NOTE
 
   def _write_summary(self, step, features, loss):
     writer = self.summary_writer or SummaryWriter(self.model_dir, purge_step=step)
-    writer.add_audio('feature/audio', features['audio'][0], step, sample_rate=self.params.sample_rate)
+    writer.add_audio('feature/audio', 
+            features['audio'][0], step, sample_rate=self.params.sample_rate)
+
     if not self.params.unconditional:
-      writer.add_image('feature/spectrogram', torch.flip(features['spectrogram'][:1], [1]), step)
+      writer.add_image('feature/spectrogram', 
+              torch.flip(features['spectrogram'][:1], [1]), step)
+
     writer.add_scalar('train/loss', loss, step)
     writer.add_scalar('train/grad_norm', self.grad_norm, step)
     writer.flush()
@@ -191,7 +221,8 @@ def _train_impl(replica_id, model, dataset, args, params):
     )
   '''
   import ipdb; ipdb.set_trace()
-  learner = DiffWaveLearner(args.model_dir, model, dataset, opt, params, fp16=args.fp16)
+  learner = DiffWaveLearner(args.model_dir, 
+          model, dataset, opt, params, fp16=args.fp16)
   # <learner.DiffWaveLearner object at 0x7fe8d2dfec40>
 
   learner.is_master = (replica_id == 0) # True
@@ -205,9 +236,12 @@ def train(args, params):
   if args.data_dirs[0] == 'gtzan':
     dataset = from_gtzan(params)
   else: # NOTE in here:
-    dataset = from_path(args.data_dirs, params) # <torch.utils.data.dataloader.DataLoader object at 0x7f32b028feb0>
+    dataset = from_path(args.data_dirs, params) 
+    # <torch.utils.data.dataloader.DataLoader object at 0x7f32b028feb0>
+
   model = DiffWave(params).cuda()
-  params = [param.nelement() for param in model.parameters() if param.requires_grad]; print('model size=', sum(params))
+  params_temp = [pa.nelement() for pa in model.parameters() if pa.requires_grad]
+  print('model size=', sum(params_temp))
 
   '''
   ipdb> p model
@@ -416,13 +450,17 @@ def train_distributed(replica_id, replica_count, port, args, params):
   import ipdb; ipdb.set_trace()
   os.environ['MASTER_ADDR'] = 'localhost'
   os.environ['MASTER_PORT'] = str(port)
-  torch.distributed.init_process_group('nccl', rank=replica_id, world_size=replica_count)
+  torch.distributed.init_process_group('nccl', 
+          rank=replica_id, world_size=replica_count)
+
   if args.data_dirs[0] == 'gtzan':
     dataset = from_gtzan(params, is_distributed=True)
   else:
     dataset = from_path(args.data_dirs, params, is_distributed=True)
+
   device = torch.device('cuda', replica_id)
   torch.cuda.set_device(device)
   model = DiffWave(params).to(device)
   model = DistributedDataParallel(model, device_ids=[replica_id])
   _train_impl(replica_id, model, dataset, args, params)
+

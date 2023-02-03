@@ -22,7 +22,7 @@ from math import sqrt
 
 
 Linear = nn.Linear
-ConvTranspose2d = nn.ConvTranspose2d
+ConvTranspose2d = nn.ConvTranspose2d # 反卷积网络
 
 
 def Conv1d(*args, **kwargs):
@@ -37,6 +37,10 @@ def silu(x):
 
 
 class DiffusionEmbedding(nn.Module):
+  '''
+  关于时间time t的embedding network.
+  time -> sin/cos -> 128 -> linear projection1 -> 512 -> linear projection2 -> 512
+  '''
   def __init__(self, max_steps): # max_steps=50, 这是对时间的embedding
     super().__init__()
     self.register_buffer('embedding', 
@@ -70,7 +74,10 @@ class DiffusionEmbedding(nn.Module):
     x = silu(x)
     return x # [4, 512], NOTE 这个关于时间的embedding，没有问题了
 
-  def _lerp_embedding(self, t):
+  def _lerp_embedding(self, t): # lerp = linear interpolation 线性插值
+    '''
+    线性插值 linear interpolation
+    '''
     low_idx = torch.floor(t).long()
     high_idx = torch.ceil(t).long()
     low = self.embedding[low_idx]
@@ -94,6 +101,9 @@ class DiffusionEmbedding(nn.Module):
 
 class SpectrogramUpsampler(nn.Module):
   # 梅尔谱的上采样 NOTE
+  '''
+  把梅尔谱条件，上采样, 映射成和原始wave相同长度的张量.
+  '''
   def __init__(self, n_mels):
     super().__init__()
     self.conv1 = ConvTranspose2d(1, 1, [3, 32], stride=[1, 16], padding=[1, 8]) 
@@ -132,7 +142,7 @@ class ResidualBlock(nn.Module):
     '''
     :param n_mels: inplanes of conv1x1 for spectrogram conditional; 80
     :param residual_channels: audio conv; 64
-    :param dilation: audio conv dilation; 1
+    :param dilation: audio conv dilation; 1, ..., 
     :param uncond: disable spectrogram conditional; False
     '''
     #import ipdb; ipdb.set_trace()
@@ -154,8 +164,8 @@ class ResidualBlock(nn.Module):
     '''Conv1d(64, 128, kernel_size=(1,), stride=(1,))'''
 
   def forward(self, x, diffusion_step, conditioner=None): 
-    # (torch.Size([4, 64, 15872]), 
-    # torch.Size([4, 512]), torch.Size([4, 80, 15872]))
+    # (torch.Size([4, 64, 15872]), 这是x_t，加噪之后的original wave tensor
+    # torch.Size([4, 512]), torch.Size([4, 80, 15872])), time t的表示张量
     #import ipdb; ipdb.set_trace()
 
     assert (conditioner is None and self.conditioner_projection is None) or \
@@ -258,7 +268,7 @@ class DiffWave(nn.Module):
 
 
   def forward(self, audio, diffusion_step, spectrogram=None): 
-    # audio=[4, 15872], t=[9, 30, 44, 25], spectrogram=[4, 80, 62]
+    # audio=[4, 15872]=x_0, t=[9, 30, 44, 25], spectrogram=[4, 80, 62]
     # [inference], audio=[1, 20992], diffusion_step=tensor([0.], device='cuda:0'), spectrogram=torch.Size([1, 80, 82]) NOTE
     assert (spectrogram is None and self.spectrogram_upsampler is None) or \
            (spectrogram is not None and self.spectrogram_upsampler is not None)
@@ -294,10 +304,12 @@ class DiffWave(nn.Module):
           idx, x.shape, diffusion_step.shape, spectrogram.shape))
 
       x, skip_connection = layer(x, diffusion_step, spectrogram) 
-      # input: (torch.Size([4, 64, 15872]), 
-      # torch.Size([4, 512]), torch.Size([4, 80, 15872])); 
-      # x_t, t, condition; output, x.shape=[4, 64, 15872], 
-      # skip_connection=[4, 64, 15872] 
+      # input: 
+      # 1. x_t: (torch.Size([4, 64, 15872]), 
+      # 2. t: torch.Size([4, 512]), 
+      # 3. mel: torch.Size([4, 80, 15872])); 
+      # x_t, t, condition; 
+      # output: (1) x.shape=[4, 64, 15872], (2) skip_connection=[4, 64, 15872] 
 
       print('{}-th layer, out: x={}, skip_connection={}'.format(
           idx, x.shape, skip_connection.shape))
@@ -308,11 +320,15 @@ class DiffWave(nn.Module):
       idx += 1
 
     import ipdb; ipdb.set_trace()
+    # NOTE 这里有意思，这是直接用累计求和得到的skip张量来搞后续了(predicted epsilon=skip)
     x = skip / sqrt(len(self.residual_layers)) # / sqrt(30), 是一个重要的分母...
     x = self.skip_projection(x) # Conv1d(64, 64, kernel_size=(1,), stride=(1,))
     x = F.relu(x)
     x = self.output_projection(x) # Conv1d(64, 1, kernel_size=(1,), stride=(1,))
-    return x # e.g., [1, 64, 20992] -> output_projection -> torch.Size([1, 1, 20992]) -> in inference NOTE
+    return x # = predicted epsilon 
+
+    # e.g., [1, 64, 20992] -> output_projection -> 
+    #     torch.Size([1, 1, 20992]) -> in inference NOTE
 
     # 0-th, layer, x_t=[4, 64, 15872], t=[4, 512], mel=[4, 80, 15872]
     #              output: x=[4, 64, 15872], skip=[4, 64, 15872]

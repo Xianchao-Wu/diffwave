@@ -32,6 +32,9 @@ from params import AttrDict
 
 
 def _nested_map(struct, map_fn):
+  '''
+  递归写出来的，嵌套把map_fn应用到输入的张量struct 
+  '''
   if isinstance(struct, tuple):
     return tuple(_nested_map(x, map_fn) for x in struct)
   if isinstance(struct, list):
@@ -40,17 +43,16 @@ def _nested_map(struct, map_fn):
     return { k: _nested_map(v, map_fn) for k, v in struct.items() }
   return map_fn(struct)
 
-
 class DiffWaveLearner:
   def __init__(self, model_dir, model, dataset, optimizer, params, *args, **kwargs):
     '''
-        model_dir = '/workspace/asr/diffusion_models/diffwave/checkpoint'
-        model = <class 'model.DiffWave'>
-        dataset = <torch.utils.data.dataloader.DataLoader object at 0x7fe8d5300e50>
-        optimizer = Adam 
-        params = {'batch_size': 16, 'learning_rate': 0.0002, 'max_grad_norm': None, 'sample_rate': 16000, 'n_mels': 80, 'n_fft': 1024, 'hop_samples': 256, 'crop_mel_frames': 62, 'residual_layers': 30, 'residual_channels': 64, 'dilation_cycle_length': 10, 'unconditional': False, 'noise_schedule': [0.0001, 0.0011183673469387756, 0.002136734693877551, 0.0031551020408163264, 0.004173469387755102, 0.005191836734693878, 0.006210204081632653, 0.007228571428571429, 0.008246938775510203, 0.009265306122448979, 0.010283673469387754, 0.01130204081632653, 0.012320408163265305, 0.013338775510204081, 0.014357142857142857, 0.015375510204081632, 0.016393877551020408, 0.017412244897959183, 0.01843061224489796, 0.019448979591836734, 0.02046734693877551, 0.021485714285714285, 0.02250408163265306, 0.023522448979591836, 0.02454081632653061, 0.025559183673469387, 0.026577551020408163, 0.027595918367346938, 0.028614285714285714, 0.02963265306122449, 0.030651020408163265, 0.031669387755102044, 0.03268775510204082, 0.033706122448979595, 0.03472448979591837, 0.035742857142857146, 0.03676122448979592, 0.0377795918367347, 0.03879795918367347, 0.03981632653061225, 0.04083469387755102, 0.0418530612244898, 0.042871428571428574, 0.04388979591836735, 0.044908163265306125, 0.0459265306122449, 0.046944897959183676, 0.04796326530612245, 0.04898163265306123, 0.05], 'inference_noise_schedule': [0.0001, 0.001, 0.01, 0.05, 0.2, 0.5], 'audio_len': 80000}
-        args = ()
-        kwargs = {'fp16': False}
+    model_dir = '/workspace/asr/diffusion_models/diffwave/checkpoint'
+    model = <class 'model.DiffWave'>
+    dataset = <torch.utils.data.dataloader.DataLoader object at 0x7fe8d5300e50>
+    optimizer = Adam 
+    params = {'batch_size': 16, 'learning_rate': 0.0002, 'max_grad_norm': None, 'sample_rate': 16000, 'n_mels': 80, 'n_fft': 1024, 'hop_samples': 256, 'crop_mel_frames': 62, 'residual_layers': 30, 'residual_channels': 64, 'dilation_cycle_length': 10, 'unconditional': False, 'noise_schedule': [0.0001, 0.0011183673469387756, 0.002136734693877551, 0.0031551020408163264, 0.004173469387755102, 0.005191836734693878, 0.006210204081632653, 0.007228571428571429, 0.008246938775510203, 0.009265306122448979, 0.010283673469387754, 0.01130204081632653, 0.012320408163265305, 0.013338775510204081, 0.014357142857142857, 0.015375510204081632, 0.016393877551020408, 0.017412244897959183, 0.01843061224489796, 0.019448979591836734, 0.02046734693877551, 0.021485714285714285, 0.02250408163265306, 0.023522448979591836, 0.02454081632653061, 0.025559183673469387, 0.026577551020408163, 0.027595918367346938, 0.028614285714285714, 0.02963265306122449, 0.030651020408163265, 0.031669387755102044, 0.03268775510204082, 0.033706122448979595, 0.03472448979591837, 0.035742857142857146, 0.03676122448979592, 0.0377795918367347, 0.03879795918367347, 0.03981632653061225, 0.04083469387755102, 0.0418530612244898, 0.042871428571428574, 0.04388979591836735, 0.044908163265306125, 0.0459265306122449, 0.046944897959183676, 0.04796326530612245, 0.04898163265306123, 0.05], 'inference_noise_schedule': [0.0001, 0.001, 0.01, 0.05, 0.2, 0.5], 'audio_len': 80000}
+    args = ()
+    kwargs = {'fp16': False}
     '''
     os.makedirs(model_dir, exist_ok=True)
     self.model_dir = model_dir
@@ -103,11 +105,12 @@ class DiffWaveLearner:
     link_name = f'{self.model_dir}/{filename}.pt'
     torch.save(self.state_dict(), save_name)
     if os.name == 'nt':
-      torch.save(self.state_dict(), link_name)
+      torch.save(self.state_dict(), link_name) 
     else:
       if os.path.islink(link_name):
-        os.unlink(link_name)
-      os.symlink(save_basename, link_name)
+        os.unlink(link_name) # = os.remove, 删除文件
+      os.symlink(save_basename, link_name) # 
+      # 创建一个软链接 类似ln in linux
 
   def restore_from_checkpoint(self, filename='weights'):
     try:
@@ -118,6 +121,7 @@ class DiffWaveLearner:
       return False
 
   def train(self, max_steps=None):
+    import ipdb; ipdb.set_trace()
     device = next(self.model.parameters()).device # device(type='cuda', index=0)
     while True:
       for features in tqdm(self.dataset,  
@@ -128,10 +132,12 @@ class DiffWaveLearner:
           return
         features = _nested_map(features, 
                 lambda x: x.to(device) if isinstance(x, torch.Tensor) else x)
+        # features = {'audio': [4, 15872], 'spectrogram': [4, 80, 62]}
 
-        loss = self.train_step(features)
+        loss = self.train_step(features) # NOTE
         if torch.isnan(loss).any():
           raise RuntimeError(f'Detected NaN loss at step {self.step}.')
+
         if self.is_master:
           if self.step % 50 == 0:
             self._write_summary(self.step, features, loss)
@@ -147,6 +153,7 @@ class DiffWaveLearner:
 
     audio = features['audio'] # torch.Size([4, 15872])
     spectrogram = features['spectrogram'] # torch.Size([4, 80, 62])
+
     import ipdb; ipdb.set_trace()
     N, T = audio.shape # N=4=batch size, T=15872=length of timepoints in wave form
     device = audio.device # device(type='cuda', index=0)
@@ -157,6 +164,7 @@ class DiffWaveLearner:
     with self.autocast:
       t = torch.randint(0, 
               len(self.params.noise_schedule), [N], device=audio.device)
+      # 随机sample出来N=batch个time t
 
       noise_scale = self.noise_level[t].unsqueeze(1) 
       # [4,1], 这是从alpha_t_bar中，按照t，取了四个值出来，是为alpha_t_bar
